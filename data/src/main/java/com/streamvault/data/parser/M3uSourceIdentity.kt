@@ -8,6 +8,8 @@ import java.util.Locale
 
 /** Stable, destination-independent identity for an M3U entry. */
 internal object M3uSourceIdentity {
+    private val collapseWhitespaceRegex = Regex("\\s+")
+
     fun fromEntry(providerId: Long, entry: M3uParser.M3uEntry): String =
         hash(providerId, entry.tvgId ?: entry.tvgName, entry.url, entry.name)
 
@@ -64,5 +66,5 @@ internal object M3uSourceIdentity {
     private fun normalize(value: String): String = value
         .trim()
         .lowercase(Locale.ROOT)
-        .replace(Regex("\\s+"), " ")
+        .replace(collapseWhitespaceRegex, " ")
 }
