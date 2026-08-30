@@ -59,6 +59,13 @@ internal data class M3uVodRules(
 internal class M3uVodClassifier(
     private val rules: M3uVodRules = M3uVodRules()
 ) {
+    // Keyword sets are fixed per classifier instance, so their normalized forms and match
+    // properties are precomputed once here instead of on every classify() call. classify() runs
+    // once per playlist entry during import, so recomputing these per entry (and per keyword)
+    // was a meaningful cost on large playlists.
+    private val liveKeywords: List<PreparedKeyword> = prepareKeywords(rules.liveKeywords)
+    private val vodKeywords: List<PreparedKeyword> = prepareKeywords(rules.vodKeywords)
+
     fun classify(
         entry: M3uParser.M3uEntry,
         override: M3uMediaKind? = null
@@ -83,13 +90,13 @@ internal class M3uVodClassifier(
 
         val group = normalize(entry.groupTitle)
         val name = normalize(entry.name)
-        if (matchesAny(group, rules.liveKeywords) || matchesAny(name, rules.liveKeywords)) {
+        if (matchesAny(group, liveKeywords) || matchesAny(name, liveKeywords)) {
             return M3uVodClassification(M3uMediaKind.LIVE, M3uVodEvidence.LIVE_TEXT_HINT, 0.8f)
         }
-        if (matchesAny(group, rules.vodKeywords)) {
+        if (matchesAny(group, vodKeywords)) {
             return M3uVodClassification(M3uMediaKind.VOD, M3uVodEvidence.GROUP_KEYWORD, 0.7f)
         }
-        if (matchesAny(name, rules.vodKeywords)) {
+        if (matchesAny(name, vodKeywords)) {
             return M3uVodClassification(M3uMediaKind.VOD, M3uVodEvidence.NAME_KEYWORD, 0.55f)
         }
         return M3uVodClassification(M3uMediaKind.LIVE, M3uVodEvidence.DEFAULT_LIVE, 1.0f)
@@ -100,22 +107,49 @@ internal class M3uVodClassifier(
         ?.lowercase(Locale.ROOT)
         ?: url.substringBefore('#').substringBefore('?').lowercase(Locale.ROOT)
 
-    private fun normalize(value: String): String = value
-        .lowercase(Locale.ROOT)
-        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
-        .trim()
+    private fun normalize(value: String): String = normalizeKeyword(value)
 
-    private fun matchesAny(value: String, keywords: Set<String>): Boolean {
+    private fun matchesAny(value: String, keywords: List<PreparedKeyword>): Boolean {
         if (value.isEmpty()) return false
         val paddedValue = " $value "
         return keywords.any { keyword ->
-            val normalizedKeyword = normalize(keyword)
-            normalizedKeyword.isNotEmpty() && (
-                paddedValue.contains(" $normalizedKeyword ") ||
-                    (normalizedKeyword.none(Char::isWhitespace) &&
-                        normalizedKeyword.any { it.code > 127 } &&
-                        value.contains(normalizedKeyword))
-                )
+            paddedValue.contains(keyword.spaced) ||
+                (keyword.allowsSubstringMatch && value.contains(keyword.normalized))
         }
+    }
+
+    /**
+     * A keyword with its normalized form and match properties precomputed. [allowsSubstringMatch]
+     * mirrors the original per-call test: whitespace-free keywords containing at least one
+     * non-ASCII character are matched as substrings (for languages without word spacing).
+     */
+    private class PreparedKeyword(
+        val normalized: String,
+        val allowsSubstringMatch: Boolean
+    ) {
+        val spaced: String = " $normalized "
+    }
+
+    private companion object {
+        private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{N}]+")
+
+        private fun normalizeKeyword(value: String): String = value
+            .lowercase(Locale.ROOT)
+            .replace(NON_ALPHANUMERIC, " ")
+            .trim()
+
+        private fun prepareKeywords(keywords: Set<String>): List<PreparedKeyword> =
+            keywords.mapNotNull { keyword ->
+                val normalized = normalizeKeyword(keyword)
+                if (normalized.isEmpty()) {
+                    null
+                } else {
+                    PreparedKeyword(
+                        normalized = normalized,
+                        allowsSubstringMatch = normalized.none(Char::isWhitespace) &&
+                            normalized.any { it.code > 127 }
+                    )
+                }
+            }
     }
 }
