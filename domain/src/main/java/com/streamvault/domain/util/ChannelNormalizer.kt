@@ -3,6 +3,7 @@ package com.streamvault.domain.util
 import com.streamvault.domain.model.LiveChannelVariantAttributes
 import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 data class ChannelClassification(
     val logicalGroupId: String,
@@ -18,6 +19,21 @@ object ChannelNormalizer {
     private val nonAlphaNumericRegex = Regex("""[^a-z0-9 ]""")
     private val frameRateRegex = Regex("""(?<!\d)(24|25|30|50|60)\s*fps(?!\d)""", RegexOption.IGNORE_CASE)
     private val heightRegex = Regex("""(?<!\d)(4320|2160|1440|1080|720|576|540|480|360|240)\s*p?(?!\d)""", RegexOption.IGNORE_CASE)
+    private val dolbyVisionAbbreviationRegex = Regex("""(?<![a-z0-9])dv(?![a-z0-9])""")
+    private val plusRegex = Regex("""\+""")
+    private val colonPipeRegex = Regex("""[:|]""")
+    private val diacriticalMarksRegex = Regex("""\p{InCombiningDiacriticalMarks}+""")
+
+    // classify() runs once per channel during import and probes the same fixed set of tokens
+    // (codec/transport/source/language/resolution tags) against every name. Compiling a
+    // word-boundary Regex per token per call was a hot-path cost, so compiled regexes are cached
+    // by token. The key set is bounded by the fixed tag maps plus a few string literals.
+    private val standaloneTokenRegexCache = ConcurrentHashMap<String, Regex>()
+
+    private fun standaloneTokenRegex(token: String): Regex =
+        standaloneTokenRegexCache.getOrPut(token) {
+            Regex("""(?<![a-z0-9])${Regex.escape(token)}(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+        }
 
     private val resolutionTags = linkedMapOf(
         "8k" to 4320,
@@ -178,7 +194,7 @@ object ChannelNormalizer {
                 codecLabel = codecLabel,
                 transportLabel = transportLabel,
                 frameRate = frameRate,
-                isHdr = lowerName.contains("hdr") || lowerName.contains("dolby vision") || Regex("""(?<![a-z0-9])dv(?![a-z0-9])""").containsMatchIn(lowerName),
+                isHdr = lowerName.contains("hdr") || lowerName.contains("dolby vision") || dolbyVisionAbbreviationRegex.containsMatchIn(lowerName),
                 sourceHint = sourceHint,
                 regionHint = regionHint,
                 languageHint = languageHint,
@@ -199,8 +215,8 @@ object ChannelNormalizer {
         cleaned = frameRateRegex.replace(cleaned, " ")
 
         cleaned = cleaned
-            .replace(Regex("""\+"""), " + ")
-            .replace(Regex("""[:|]"""), " ")
+            .replace(plusRegex, " + ")
+            .replace(colonPipeRegex, " ")
             .replace(separatorRegex, " ")
             .replace(collapseWhitespaceRegex, " ")
             .trim()
@@ -214,8 +230,7 @@ object ChannelNormalizer {
             return directHeight
         }
         resolutionTags.forEach { (tag, height) ->
-            val regex = Regex("""(?<![a-z0-9])${Regex.escape(tag)}(?![a-z0-9])""", RegexOption.IGNORE_CASE)
-            if (regex.containsMatchIn(lowerName)) {
+            if (standaloneTokenRegex(tag).containsMatchIn(lowerName)) {
                 return height
             }
         }
@@ -280,15 +295,13 @@ object ChannelNormalizer {
         regionHint?.let { add(it) }
         languageHint?.let { if (it != regionHint) add(it) }
         if (lowerName.contains("hdr")) add("HDR")
-        if (lowerName.contains("dolby vision") || Regex("""(?<![a-z0-9])dv(?![a-z0-9])""").containsMatchIn(lowerName)) {
+        if (lowerName.contains("dolby vision") || dolbyVisionAbbreviationRegex.containsMatchIn(lowerName)) {
             add("Dolby Vision")
         }
     }.distinct()
 
-    private fun containsStandalone(text: String, token: String): Boolean {
-        val regex = Regex("""(?<![a-z0-9])${Regex.escape(token)}(?![a-z0-9])""", RegexOption.IGNORE_CASE)
-        return regex.containsMatchIn(text)
-    }
+    private fun containsStandalone(text: String, token: String): Boolean =
+        standaloneTokenRegex(token).containsMatchIn(text)
 
     private fun heightToResolutionLabel(height: Int): String = when {
         height >= 4320 -> "8K"
@@ -312,5 +325,5 @@ object ChannelNormalizer {
 
     private fun String.stripAccents(): String =
         Normalizer.normalize(this, Normalizer.Form.NFD)
-            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+            .replace(diacriticalMarksRegex, "")
 }

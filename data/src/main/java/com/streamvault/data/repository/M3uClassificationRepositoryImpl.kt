@@ -45,6 +45,20 @@ class M3uClassificationRepositoryImpl @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner
 ) : M3uClassificationRepository {
 
+    // cleanSeriesName() and inferSeriesAssignment() run once per channel when listing/classifying
+    // a category, so their regexes are compiled once here instead of on every call.
+    private val episodeMarkerRegex =
+        Regex("(?i)\\b(?:s\\d+e\\d+|\\d+x\\d+|season\\s+\\d+\\s+episode\\s+\\d+|phần\\s+\\d+\\s*-\\s*tập\\s+\\d+)\\b")
+    private val episodeWordRegex = Regex("(?i)\\b(?:episode|ep|tập)\\s+(?:cuối|\\d+)\\b")
+    private val repeatedWhitespaceRegex = Regex("\\s{2,}")
+    private val seriesAssignmentPatterns = listOf(
+        Regex("(?i)^(.*?)[\\s._-]*s(\\d{1,2})[\\s._-]*e(\\d{1,3}).*$"),
+        Regex("(?i)^(.*?)[\\s._-]*(\\d{1,2})x(\\d{1,3}).*$"),
+        Regex("(?i)^(.*?)\\s+season\\s+(\\d{1,2})\\s+episode\\s+(\\d{1,3}).*$"),
+        Regex("(?i)^(.*?)\\s+phần\\s+(\\d{1,2})\\s*-\\s*tập\\s+(\\d{1,3}).*$"),
+        Regex("(?i)^(.*?)[\\s._-]*(?:episode|ep|tập)\\s+(\\d{1,3}).*$")
+    )
+
     override suspend fun getCategoryItems(
         providerId: Long,
         categoryId: Long
@@ -459,21 +473,14 @@ class M3uClassificationRepositoryImpl @Inject constructor(
     )
 
     private fun cleanSeriesName(title: String): String = title
-        .replace(Regex("(?i)\\b(?:s\\d+e\\d+|\\d+x\\d+|season\\s+\\d+\\s+episode\\s+\\d+|phần\\s+\\d+\\s*-\\s*tập\\s+\\d+)\\b"), "")
-        .replace(Regex("(?i)\\b(?:episode|ep|tập)\\s+(?:cuối|\\d+)\\b"), "")
-        .replace(Regex("\\s{2,}"), " ")
+        .replace(episodeMarkerRegex, "")
+        .replace(episodeWordRegex, "")
+        .replace(repeatedWhitespaceRegex, " ")
         .trim()
         .ifBlank { title.trim() }
 
     private fun inferSeriesAssignment(title: String): M3uSeriesAssignment? {
-        val patterns = listOf(
-            Regex("(?i)^(.*?)[\\s._-]*s(\\d{1,2})[\\s._-]*e(\\d{1,3}).*$"),
-            Regex("(?i)^(.*?)[\\s._-]*(\\d{1,2})x(\\d{1,3}).*$"),
-            Regex("(?i)^(.*?)\\s+season\\s+(\\d{1,2})\\s+episode\\s+(\\d{1,3}).*$"),
-            Regex("(?i)^(.*?)\\s+phần\\s+(\\d{1,2})\\s*-\\s*tập\\s+(\\d{1,3}).*$"),
-            Regex("(?i)^(.*?)[\\s._-]*(?:episode|ep|tập)\\s+(\\d{1,3}).*$")
-        )
-        patterns.forEach { pattern ->
+        seriesAssignmentPatterns.forEach { pattern ->
             val match = pattern.matchEntire(title.trim()) ?: return@forEach
             val groups = match.groupValues
             val hasSeason = groups.size >= 4 && groups[2].toIntOrNull() != null && groups[3].toIntOrNull() != null
