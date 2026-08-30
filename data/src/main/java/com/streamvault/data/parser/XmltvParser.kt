@@ -95,6 +95,9 @@ class XmltvParser {
         DateTimeFormatter.ofPattern("yyyyMMdd", Locale.US)
     )
 
+    private val basicDateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.US)
+    private val nonDigitRegex = Regex("""[^\d]""")
+
     private fun newPullParser(inputStream: InputStream): XmlPullParser {
         val factory = XmlPullParserFactory.newInstance()
         factory.isNamespaceAware = false
@@ -622,11 +625,11 @@ class XmltvParser {
                  dateStr.contains('+') ||
                  dateStr.lastIndexOf('-') > 12)
             if (!hasTimezoneMarker && parsingZoneId != null) {
-                val cleaned = dateStr.replace("""[^\d]""".toRegex(), "")
+                val cleaned = dateStr.replace(nonDigitRegex, "")
                 if (cleaned.length >= 14) {
                     return parseLocalDateTime(
                         cleaned.substring(0, 14),
-                        DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.US),
+                        basicDateTimeFormatter,
                         parsingZoneId
                     ) ?: 0
                 }
