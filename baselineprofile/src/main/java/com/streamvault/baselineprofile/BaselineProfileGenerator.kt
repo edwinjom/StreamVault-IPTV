@@ -38,6 +38,15 @@ class BaselineProfileGenerator {
         packageName = PACKAGE_NAME,
         includeInStartupProfile = true,
     ) {
+        // StreamVault runs fullscreen/immersive, so the system "swipe to exit full screen"
+        // (ImmersiveModeConfirmation) overlay grabs window focus on first launch and prevents
+        // macrobenchmark from confirming MainActivity's launch. Mark it acknowledged up front.
+        device.executeShellCommand("settings put secure immersive_mode_confirmations confirmed")
+
+        // MainActivity is launchMode="singleTask"; if the process is still alive, the launcher
+        // intent only brings the existing task to the front and draws no new frame, which makes the
+        // macrobenchmark frame-based launch confirmation fail. Force a genuine cold start.
+        killProcess()
         pressHome()
         startActivityAndWait()
 

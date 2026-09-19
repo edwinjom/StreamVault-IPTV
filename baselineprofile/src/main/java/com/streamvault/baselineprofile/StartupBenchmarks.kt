@@ -40,7 +40,12 @@ class StartupBenchmarks {
         compilationMode = compilationMode,
         startupMode = StartupMode.COLD,
         iterations = 10,
-        setupBlock = { pressHome() },
+        setupBlock = {
+            // Suppress the fullscreen "swipe to exit" overlay so it does not steal focus from
+            // MainActivity and break launch confirmation (see BaselineProfileGenerator).
+            device.executeShellCommand("settings put secure immersive_mode_confirmations confirmed")
+            pressHome()
+        },
     ) {
         startActivityAndWait()
     }

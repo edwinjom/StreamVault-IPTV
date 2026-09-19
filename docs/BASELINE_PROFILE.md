@@ -22,9 +22,6 @@ by hand.
 
 ## Generating the profile
 
-Requires a connected device or emulator running **API 33+** (a rooted/`userdebug` emulator image is
-recommended so the profile can be captured):
-
 ```bash
 ./gradlew :app:generateReleaseBaselineProfile
 ```
@@ -35,6 +32,32 @@ copies the result into `app/src/release/generated/baselineProfiles/`. Commit tha
 > If you do not have the release keystore, the benchmark variants fall back to debug signing
 > automatically (see the `afterEvaluate` block in `app/build.gradle.kts`), so generation works
 > without any secrets.
+
+### Device requirements (important)
+
+The generator device must satisfy **all** of the following, or capture fails:
+
+1. **API 33+** on a non-rooted device, **or** API 28+ on a rooted device (e.g. `adb root` on a
+   `userdebug` emulator). Macrobenchmark cannot capture a profile otherwise.
+2. **It must emit per-frame `dumpsys gfxinfo <pkg> framestats` PROFILEDATA rows.** Macrobenchmark
+   confirms each activity launch by reading that frame timeline; without it you get
+   `IllegalStateException: Unable to confirm activity launch completion []`. Many software-GPU or
+   virtualization-constrained emulators (e.g. running under Hyper-V/VBS) render frames but emit an
+   *empty* PROFILEDATA section — those cannot be used. Verify with:
+
+   ```bash
+   adb shell dumpsys gfxinfo <pkg> framestats | awk '/---PROFILEDATA---/{f=!f;next} f' | grep -c ,
+   ```
+
+   A healthy device prints a non-zero row count shortly after the app renders a frame.
+3. Enough GPU/CPU performance that a cold launch completes within the tool's launch-detection window.
+   Prefer a **physical device**, a GPU-accelerated emulator on a bare-metal host, a Gradle Managed
+   Device ATD image, or CI.
+
+Note on ABIs: the app ships `arm64-v8a`/`armeabi-v7a` only, so on an x86/x86_64 emulator it runs via
+ARM translation (slow). To run natively on an x86_64 emulator for a faster capture, add that ABI for
+the run via the existing hook: `./gradlew :app:generateReleaseBaselineProfile -PcompatAbi=x86_64`
+(does not change the shipped release APK).
 
 ## Measuring the improvement
 
