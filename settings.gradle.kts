@@ -17,7 +17,16 @@ dependencyResolutionManagement {
 rootProject.name = "StreamVault"
 
 include(":app")
+include(":benchmark")
+include(":core:navigation")
+include(":core:ui")
 include(":domain")
 include(":data")
 include(":player")
+include(":feature:playback")
+include(":feature:provider")
+include(":feature:settings")
+include(":feature:live")
+include(":feature:catalog")
+include(":feature:system")
 include(":baselineprofile")
