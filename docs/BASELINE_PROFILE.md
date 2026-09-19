@@ -54,6 +54,12 @@ The generator device must satisfy **all** of the following, or capture fails:
    Prefer a **physical device**, a GPU-accelerated emulator on a bare-metal host, a Gradle Managed
    Device ATD image, or CI.
 
+> **Tooling/API note:** keep `androidx.benchmark` current with the device's API level. The frame
+> detection parses `gfxinfo framestats`, whose format changes across platform versions — older
+> benchmark releases fail on newer devices with `Unable to confirm activity launch completion []`
+> even though the app launches fine. The committed profile here was generated on a Pixel 9 Pro
+> (API 37) with benchmark 1.4.1; 1.3.4 could not parse that device's framestats.
+
 Note on ABIs: the app ships `arm64-v8a`/`armeabi-v7a` only, so on an x86/x86_64 emulator it runs via
 ARM translation (slow). To run natively on an x86_64 emulator for a faster capture, add that ABI for
 the run via the existing hook: `./gradlew :app:generateReleaseBaselineProfile -PcompatAbi=x86_64`
