@@ -37,10 +37,6 @@ leakcanary = "2.14"
 work = "2.11.1"
 appcompat = "1.7.1"
 mediarouter = "1.8.1"
-# Baseline Profile generation (benchmark drives both the macro library and the gradle plugin)
-androidx-benchmark = "1.4.1"
-uiautomator = "2.3.0"
-profileinstaller = "1.4.1"
 play-services-cast-framework = "22.1.0"
 play-services-auth = "21.4.0"
 # Test
@@ -137,11 +133,6 @@ mediarouter = { group = "androidx.mediarouter", name = "mediarouter", version.re
 play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "play-services-cast-framework" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "play-services-auth" }
 
-# Baseline Profile
-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "androidx-benchmark" }
-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
-
 # Test
 benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmark" }
 uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
@@ -166,8 +157,6 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-test = { id = "com.android.test", version.ref = "agp" }
 baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-android-test = { id = "com.android.test", version.ref = "agp" }
-androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "androidx-benchmark" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
