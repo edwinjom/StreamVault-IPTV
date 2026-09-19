@@ -274,18 +274,27 @@ tasks.configureEach {
 }
 
 // The androidx.baselineprofile plugin derives `nonMinifiedRelease` and `benchmarkRelease` build
-// types from `release`. When no release keystore is present (contributors, CI), fall back to debug
-// signing so the profile can still be generated on a connected device. Profiles are independent of
-// the signing identity, so this does not affect the shipped release profile.
+// types from `release`. These are built ONLY for profile generation / benchmarking and are never
+// shipped, so here we specialize them for capture:
+//  - Fall back to debug signing when no release keystore is present (contributors, CI). Profiles are
+//    independent of the signing identity, so this does not affect the shipped release profile.
+//  - Seed a public M3U provider (BuildConfig.M3U_DEV_URL, consumed by WelcomeViewModel on first
+//    boot) so the generator profiles the real content-browsing paths — large-list rendering, image
+//    loading, Room queries — not just cold start to the onboarding screen. Overridable with
+//    -PbaselineProfileSeedM3uUrl=<url>. This field stays empty on the shipped release/beta variants.
 afterEvaluate {
     val debugSigning = android.signingConfigs.findByName("debug")
-    if (debugSigning != null) {
-        listOf("nonMinifiedRelease", "benchmarkRelease").forEach { typeName ->
-            android.buildTypes.findByName(typeName)?.let { buildType ->
-                if (buildType.signingConfig == null) {
-                    buildType.signingConfig = debugSigning
-                }
+    val seedM3uUrl = providers.gradleProperty("baselineProfileSeedM3uUrl").orNull
+        ?: "https://iptv-org.github.io/iptv/countries/us.m3u"
+    val seedM3uName = providers.gradleProperty("baselineProfileSeedM3uName").orNull
+        ?: "Baseline Profile Seed"
+    listOf("nonMinifiedRelease", "benchmarkRelease").forEach { typeName ->
+        android.buildTypes.findByName(typeName)?.let { buildType ->
+            if (debugSigning != null && buildType.signingConfig == null) {
+                buildType.signingConfig = debugSigning
             }
+            buildType.buildConfigField("String", "M3U_DEV_URL", "\"$seedM3uUrl\"")
+            buildType.buildConfigField("String", "M3U_DEV_NAME", "\"$seedM3uName\"")
         }
     }
 }
