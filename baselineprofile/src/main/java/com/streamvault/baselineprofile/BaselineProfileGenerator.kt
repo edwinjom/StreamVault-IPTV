@@ -1,5 +1,7 @@
 package com.streamvault.baselineprofile
 
+import android.view.KeyEvent
+import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
@@ -21,11 +23,12 @@ import org.junit.runner.RunWith
  * ProfileInstaller applies it on first run. Re-run whenever startup or the primary browse
  * surfaces change materially.
  *
- * The journey is intentionally conservative: StreamVault gates most surfaces behind provider
- * onboarding, so a generic instrumentation run cannot assume a configured provider. Capturing a
- * clean cold start plus the first idle frame already covers the Application/Hilt graph, the initial
- * Compose composition, and navigation setup — the classes that dominate cold-start cost. The
- * optional scroll below extends coverage to list rendering when a scrollable surface is present.
+ * The `nonMinifiedRelease` profiling variant seeds a public M3U provider on first boot (see the
+ * `afterEvaluate` block in `app/build.gradle.kts`), so this journey covers not just cold start but
+ * the real content-browsing paths — Live TV list rendering, channel-logo image loading, and the
+ * Room-backed queries behind them — which is where a media browser spends most of its time. The
+ * browse steps are best-effort/guarded so the capture still succeeds if seeding is unavailable
+ * (e.g. no network), in which case it degrades to a clean startup profile.
  */
 @RunWith(AndroidJUnit4::class)
 class BaselineProfileGenerator {
@@ -50,23 +53,47 @@ class BaselineProfileGenerator {
         pressHome()
         startActivityAndWait()
 
-        // Let first-frame composition and initial data loading settle so the profile captures the
-        // home/onboarding rendering path rather than just the splash.
-        device.waitForIdle(WAIT_TIMEOUT_MS)
+        // On the first iteration the app auto-onboards the seeded M3U provider and syncs it over the
+        // network before any content appears, so wait generously for the browse UI to populate.
+        // Later iterations reuse the already-synced database and reach content quickly.
+        val contentReady = device.wait(Until.hasObject(By.scrollable(true)), CONTENT_LOAD_TIMEOUT_MS)
+        device.waitForIdle(IDLE_TIMEOUT_MS)
 
-        // If the current surface is scrollable (e.g. a browse list once a provider exists), exercise
-        // it so list item composition and image binding are profiled. Absent on onboarding — guarded
-        // so the run stays green either way.
-        device.wait(Until.hasObject(By.scrollable(true)), WAIT_TIMEOUT_MS)
-        device.findObject(By.scrollable(true))?.let { scrollable ->
-            scrollable.setGestureMargin(device.displayWidth / 5)
-            repeat(2) { scrollable.scroll(Direction.DOWN, 0.8f) }
-            device.waitForIdle(WAIT_TIMEOUT_MS)
+        if (contentReady) {
+            browseContent()
         }
     }
 
     private companion object {
         const val PACKAGE_NAME = "com.streamvault.app"
-        const val WAIT_TIMEOUT_MS = 5_000L
+        const val CONTENT_LOAD_TIMEOUT_MS = 90_000L
+    }
+}
+
+private const val IDLE_TIMEOUT_MS = 5_000L
+private const val SCROLL_COUNT = 4
+private const val DPAD_STEPS = 6
+
+/** Exercises the primary browse surfaces so list rendering and image loading are profiled. */
+private fun MacrobenchmarkScope.browseContent() {
+    // Scroll the current list (Live TV) to profile lazy-list item composition and logo loading.
+    device.findObject(By.scrollable(true))?.let { list ->
+        list.setGestureMargin(device.displayWidth / 5)
+        repeat(SCROLL_COUNT) {
+            list.scroll(Direction.DOWN, 0.8f)
+            device.waitForIdle(IDLE_TIMEOUT_MS)
+        }
+        list.scroll(Direction.UP, 1.0f)
+    }
+
+    // Move focus around with the D-pad (this is a TV-first UI) to profile row/category switching
+    // and focus handling across the shell.
+    repeat(DPAD_STEPS) {
+        device.pressKeyCode(KeyEvent.KEYCODE_DPAD_DOWN)
+        device.waitForIdle(IDLE_TIMEOUT_MS)
+    }
+    repeat(DPAD_STEPS) {
+        device.pressKeyCode(KeyEvent.KEYCODE_DPAD_RIGHT)
+        device.waitForIdle(IDLE_TIMEOUT_MS)
     }
 }
